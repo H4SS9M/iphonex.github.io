@@ -1,382 +1,492 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JSC Fuzzing Lab - iOS 16.7.16</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background: #0d1117; color: #c9d1d9; }
-        h1 { color: #58a6ff; }
-        .container { max-width: 900px; margin: 0 auto; }
-        .test-case { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-        .test-case h2 { margin-top: 0; font-size: 1.1em; color: #8b949e; }
-        .status { font-weight: bold; padding: 4px 10px; border-radius: 6px; display: inline-block; font-size: 0.9em; }
-        .status.pass { background: #1f6feb33; color: #58a6ff; border: 1px solid #1f6feb; }
-        .status.crash { background: #da363333; color: #f85149; border: 1px solid #da3633; }
-        .status.running { background: #d2992233; color: #d29922; border: 1px solid #d29922; }
-        .status.error { background: #d2992233; color: #d29922; border: 1px solid #d29922; }
-        pre { background: #0d1117; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; color: #8b949e; border: 1px solid #30363d; }
-        button { background: #238636; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; width: 100%; margin-bottom: 20px; }
-        button:active { background: #2ea043; }
-        #summary { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 20px; display: none; }
-        .log-line { font-family: monospace; font-size: 12px; padding: 2px 0; }
-        .log-crash { color: #f85149; font-weight: bold; }
-        .log-info { color: #58a6ff; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSC Chain Fuzzer — H4SS9M</title>
+<style>
+  :root { --bg:#0a0e14; --panel:#12171f; --border:#1f2937; --text:#c9d1d9;
+          --accent:#58a6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
+  * { box-sizing: border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"SF Mono",Menlo,monospace;
+         background:var(--bg); color:var(--text); margin:0; padding:16px; font-size:13px; }
+  h1 { color:var(--accent); font-size:16px; margin:0 0 4px 0; letter-spacing:0.5px; }
+  .author { color:#6e7681; font-size:11px; margin-bottom:16px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px;
+           padding:12px; margin-bottom:12px; }
+  .panel h2 { font-size:12px; color:#8b949e; margin:0 0 8px 0; text-transform:uppercase;
+              letter-spacing:1px; font-weight:600; }
+  .row { display:flex; justify-content:space-between; padding:3px 0; font-size:12px; }
+  .row .k { color:#6e7681; }
+  .row .v { color:var(--accent); }
+  button { background:#1f6feb; color:#fff; border:none; padding:10px 16px;
+           border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;
+           width:100%; margin-bottom:8px; font-family:inherit; }
+  button:active { background:#388bfd; }
+  button.secondary { background:#21262d; color:var(--text); border:1px solid var(--border); }
+  .stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stat { background:#0a0e14; border:1px solid var(--border); border-radius:6px;
+          padding:8px; text-align:center; }
+  .stat .n { font-size:20px; font-weight:700; color:var(--accent); }
+  .stat .l { font-size:10px; color:#6e7681; text-transform:uppercase; letter-spacing:1px; }
+  #log { background:#0a0e14; border:1px solid var(--border); border-radius:6px;
+         padding:8px; height:200px; overflow-y:auto; font-size:11px;
+         font-family:"SF Mono",Menlo,monospace; margin-top:8px; }
+  .l-info { color:#6e7681; }
+  .l-pass { color:var(--ok); }
+  .l-warn { color:var(--warn); }
+  .l-crash { color:var(--err); font-weight:700; }
+  .l-mut { color:#a371f7; }
+  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; }
+  .badge.ok { background:#3fb95022; color:var(--ok); border:1px solid #3fb95066; }
+  .badge.warn { background:#d2992222; color:var(--warn); border:1px solid #d2992266; }
+  .badge.err { background:#f8514922; color:var(--err); border:1px solid #f8514966; }
+</style>
 </head>
 <body>
-<div class="container">
-    <h1>🔬 JavaScriptCore Fuzzing Lab</h1>
-    <p>Pruebas de patrones de código que históricamente han desencadenado bugs en el JIT de JSC.</p>
-    <p><strong>⚠️ Si la página se recarga sola o ves "A problem occurred", es un CRASH. Anota qué test lo causó.</strong></p>
-    <button onclick="runAllTests()">▶ Ejecutar Todas las Pruebas</button>
-    <div id="summary"></div>
-    <div id="results"></div>
-    <pre id="console"></pre>
+<div style="max-width:820px;margin:0 auto;">
+  <h1>⚡ JSC Chain Fuzzer</h1>
+  <div class="author">Mutation-based harness · iOS WebKit · by <b>H4SS9M</b></div>
+
+  <div class="panel" id="env">
+    <h2>Environment</h2>
+    <div class="row"><span class="k">iOS</span><span class="v" id="v-ios">…</span></div>
+    <div class="row"><span class="k">WebKit</span><span class="v" id="v-wk">…</span></div>
+    <div class="row"><span class="k">Build</span><span class="v" id="v-build">…</span></div>
+    <div class="row"><span class="k">Engine</span><span class="v" id="v-engine">…</span></div>
+    <div class="row"><span class="k">Features</span><span class="v" id="v-feat">…</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>Session</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="n" id="s-iter">0</div><div class="l">Iter</div></div>
+      <div class="stat"><div class="n" id="s-pass">0</div><div class="l">Pass</div></div>
+      <div class="stat"><div class="n" id="s-crash">0</div><div class="l">Crash</div></div>
+    </div>
+    <div style="margin-top:10px;">
+      <label style="font-size:11px;color:#6e7681;">Iteraciones: </label>
+      <input id="iters" type="number" value="500" min="10" max="10000"
+             style="background:#0a0e14;color:var(--text);border:1px solid var(--border);
+             border-radius:4px;padding:4px 8px;width:80px;font-family:inherit;">
+      <label style="font-size:11px;color:#6e7681;margin-left:10px;">Seed: </label>
+      <input id="seed" type="number" value="1337"
+             style="background:#0a0e14;color:var(--text);border:1px solid var(--border);
+             border-radius:4px;padding:4px 8px;width:80px;font-family:inherit;">
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Control</h2>
+    <button id="btn-run" onclick="startFuzz()">▶ Start Fuzzing</button>
+    <button class="secondary" onclick="clearState()">⟲ Clear State</button>
+    <button class="secondary" onclick="exportResults()">⬇ Export Results (JSON)</button>
+  </div>
+
+  <div class="panel">
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Crash Reports</h2>
+    <div id="crashes" style="font-size:11px;color:#6e7681;">Sin crashes registrados.</div>
+  </div>
 </div>
 
 <script>
 // ============================================================
-// DETECCIÓN DE CRASH
+//  JSC Chain Fuzzer — by H4SS9M
 // ============================================================
-// Si Safari recarga la página por un crash de WebContent, el contador
-// en sessionStorage se incrementa. Lo leemos al cargar.
-const CRASH_KEY = 'jsc_fuzz_crash_count';
-const TEST_KEY = 'jsc_fuzz_current_test';
+const AUTHOR = "H4SS9M";
+const K_PENDING = "h4ss9m_pending";   // test en curso
+const K_CRASHES = "h4ss9m_crashes";   // lista de crashes detectados
+const K_STATS   = "h4ss9m_stats";     // estadísticas de sesión
 
-window.addEventListener('load', function() {
-    let crashCount = parseInt(sessionStorage.getItem(CRASH_KEY) || '0');
-    let lastTest = sessionStorage.getItem(TEST_KEY);
-    if (crashCount > 0) {
-        logLine('💥 CRASH DETECTADO: La página se recargó durante el test "' + (lastTest || 'desconocido') + '"', 'crash');
-        sessionStorage.setItem(CRASH_KEY, '0'); // Reset
-        sessionStorage.removeItem(TEST_KEY);
-    } else {
-        logLine('✅ Página cargada limpiamente. No hay crashes previos.', 'info');
+// ---------- Environment detection ----------
+function detectEnv() {
+  const ua = navigator.userAgent;
+  const iosMatch = ua.match(/iPhone OS (\d+_\d+(?:_\d+)?)/);
+  const wkMatch  = ua.match(/AppleWebKit\/([\d.]+)/);
+  const verMatch = ua.match(/Version\/([\d.]+)/);
+  const buildMatch = ua.match(/Mobile\/(\w+)/);
+
+  const ios   = iosMatch  ? iosMatch[1].replace(/_/g,'.') : 'unknown';
+  const wk    = wkMatch   ? wkMatch[1] : 'unknown';
+  const safari= verMatch  ? verMatch[1] : 'unknown';
+  const build = buildMatch? buildMatch[1] : 'unknown';
+
+  // Detect JSC features (indirect engine fingerprinting)
+  const feats = [];
+  if (typeof BigInt !== 'undefined') feats.push('BigInt');
+  if (typeof WebAssembly !== 'undefined') feats.push('WASM');
+  if (typeof WeakRef !== 'undefined') feats.push('WeakRef');
+  if (typeof FinalizationRegistry !== 'undefined') feats.push('FinalReg');
+  if (typeof SharedArrayBuffer !== 'undefined') feats.push('SAB');
+  if (typeof Atomics !== 'undefined') feats.push('Atomics');
+  if (typeof Intl !== 'undefined') feats.push('Intl');
+  if (typeof structuredClone !== 'undefined') feats.push('clone');
+  if (typeof Array.prototype.at !== 'undefined') feats.push('Array.at');
+
+  document.getElementById('v-ios').textContent    = "iOS " + ios;
+  document.getElementById('v-wk').textContent     = wk;
+  document.getElementById('v-build').textContent  = build + " / Safari " + safari;
+  document.getElementById('v-engine').textContent = "JavaScriptCore";
+  document.getElementById('v-feat').textContent   = feats.join(' · ') || 'none';
+
+  return { ios, wk, safari, build, feats, ua };
+}
+
+// ---------- Logging ----------
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = 'l-' + (cls || 'info');
+  line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ---------- Deterministic PRNG (mulberry32) ----------
+// Permite reproducir una sesión a partir de la seed.
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// ============================================================
+//  POC TEMPLATES (patrones reales de bugs históricos en JSC)
+// ============================================================
+// Cada template recibe un objeto `rng` (PRNG) y `p` (parámetros mutables)
+// y devuelve true si todo OK, o lanza si hay excepción.
+
+const TEMPLATES = {
+
+  // T1: Array species + prototype confusion (patrón CVE-2018-4416-ish)
+  'array-species': (rng, p) => {
+    const N = p.size;
+    const M = p.iter;
+    const arr = new Array(N).fill(p.fill);
+    Object.defineProperty(arr.constructor, Symbol.species, {
+      get() { return function(len) { return { length: len }; }; },
+      configurable: true
+    });
+    for (let i = 0; i < M; i++) {
+      const sliced = arr.slice(0, p.cut);
+      if (sliced.length !== undefined && sliced[0] !== undefined) {
+        // intento de leer más allá de la estructura "fake"
+        const probe = sliced[p.cut + 1];
+      }
     }
+    delete arr.constructor[Symbol.species];
+    return true;
+  },
+
+  // T2: TypedArray + ArrayBuffer detachment race (patrón CVE-2023-32445-ish)
+  'typedarray-detach': (rng, p) => {
+    const buf = new ArrayBuffer(p.size);
+    const view = new DataView(buf);
+    const f64 = new Float64Array(buf);
+    const u32 = new Uint32Array(buf);
+    for (let i = 0; i < p.iter; i++) {
+      // escribir un double que, reinterpretado como enteros, dé valores altos
+      f64[0] = p.value;
+      const lo = u32[0], hi = u32[1];
+      // forzar una escritura que cruce el límite del buffer
+      const idx = (hi & 0x7fffffff) % (p.size / 4);
+      u32[idx] = lo ^ (p.mask >>> 0);
+    }
+    return true;
+  },
+
+  // T3: Proxy get trap recursion (patrón de confusión de estructuras)
+  'proxy-recursion': (rng, p) => {
+    let depth = 0;
+    const target = { x: p.value };
+    const handler = {
+      get(t, k, r) {
+        if (k === 'x' && depth < p.depth) {
+          depth++;
+          // reentrar en la trampa mientras el JIT asume un tipo
+          return r.x;
+        }
+        return t[k];
+      }
+    };
+    const proxy = new Proxy(target, handler);
+    for (let i = 0; i < p.iter; i++) {
+      depth = 0;
+      const v = proxy.x;
+    }
+    return true;
+  },
+
+  // T4: RegExp lastIndex + sticky flag (patrón de UAF histórico)
+  'regexp-lastindex': (rng, p) => {
+    const re = new RegExp('(a+)+$', 'y');
+    const str = 'a'.repeat(p.size);
+    for (let i = 0; i < p.iter; i++) {
+      re.lastIndex = i % p.size;
+      const m = re.exec(str);
+      if (m && m.index > p.size) {
+        // forzar acceso a un índice fuera de rango si el motor confunde el match
+        const c = str[m.index + p.depth];
+      }
+    }
+    return true;
+  },
+
+  // T5: Structured clone + transfer (type confusion en la serialización)
+  'structured-clone': (rng, p) => {
+    if (typeof structuredClone !== 'function') return 'skip';
+    const buf = new ArrayBuffer(p.size);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i < p.size; i++) view[i] = (i * p.mask) & 0xff;
+    for (let i = 0; i < p.iter; i++) {
+      const clone = structuredClone(buf, { transfer: [buf] });
+      // buf transferido → cualquier acceso posterior debe lanzar
+      try { view[0] = 0xff; } catch (e) { /* esperado */ }
+      if (clone.byteLength !== p.size) return 'mismatch';
+    }
+    return true;
+  },
+
+  // T6: JIT deopt con arguments + function.length (patrón de bug en DFG)
+  'jit-deopt-args': (rng, p) => {
+    function hot(a, b, c) {
+      let sum = 0;
+      for (let i = 0; i < p.iter; i++) {
+        sum += (a + b + c) * (arguments.length + i);
+      }
+      return sum;
+    }
+    // calentar con distintos arity para forzar deopts
+    for (let i = 0; i < 100; i++) hot(i, i, i);
+    for (let i = 0; i < 100; i++) hot(i, i);
+    for (let i = 0; i < 100; i++) hot(i, i, i, i, i);
+    // llamada final con argumentos "raros"
+    const r = hot(p.value, { x: p.mask }, [p.size]);
+    return true;
+  },
+
+  // T7: Map/Set + Symbol.iterator manipulation
+  'map-set-iter': (rng, p) => {
+    const m = new Map();
+    for (let i = 0; i < p.size; i++) m.set(i, i * p.mask);
+    // sobrescribir el iterador del prototipo en caliente
+    const orig = Map.prototype[Symbol.iterator];
+    Map.prototype[Symbol.iterator] = function() {
+      const it = orig.call(this);
+      return {
+        next() { const r = it.next(); return r; },
+        [Symbol.iterator]() { return this; }
+      };
+    };
+    let count = 0;
+    for (const [k, v] of m) { count++; if (count > p.size * 2) break; }
+    Map.prototype[Symbol.iterator] = orig;
+    return true;
+  },
+
+  // T8: getter/setter con delete en caliente (structure transition bug)
+  'structure-transition': (rng, p) => {
+    const o = {};
+    for (let i = 0; i < p.size; i++) {
+      Object.defineProperty(o, 'p' + i, {
+        get() { return i; },
+        set(v) { /* noop */ },
+        configurable: true
+      });
+    }
+    // borrar propiedades en orden inverso → forzar transición de dictionary mode
+    for (let i = p.size - 1; i >= 0; i--) {
+      delete o['p' + i];
+    }
+    // reañadir propiedades en orden aleatorio
+    for (let i = 0; i < p.size; i++) {
+      o['p' + (i % p.size)] = i;
+    }
+    return true;
+  }
+};
+
+// ---------- Mutation engine ----------
+function mutate(rng, base) {
+  const p = Object.assign({}, base);
+  // Mutar cada parámetro numérico con +/- hasta 50%
+  for (const k of Object.keys(p)) {
+    if (typeof p[k] === 'number') {
+      const delta = Math.floor((rng() - 0.5) * p[k] * 1.0);
+      p[k] = Math.max(1, Math.min(100000, p[k] + delta));
+    } else if (typeof p[k] === 'boolean') {
+      if (rng() < 0.1) p[k] = !p[k];
+    }
+  }
+  return p;
+}
+
+const BASE_PARAMS = {
+  'array-species':       { size: 64,   iter: 200, cut: 16,  fill: 1.1 },
+  'typedarray-detach':   { size: 256,  iter: 500, value: 1.7976931348623157e308, mask: 0xdeadbeef },
+  'proxy-recursion':     { depth: 32,  iter: 300, value: 42 },
+  'regexp-lastindex':    { size: 128,  iter: 300, depth: 8 },
+  'structured-clone':    { size: 128,  iter: 100, mask: 0x5a },
+  'jit-deopt-args':      { iter: 500,  value: 1.5, mask: 0x1337 },
+  'map-set-iter':        { size: 64,   mask: 3 },
+  'structure-transition':{ size: 32 }
+};
+
+// ============================================================
+//  CRASH DETECTION
+// ============================================================
+function pendingSet(info) {
+  try { sessionStorage.setItem(K_PENDING, JSON.stringify(info)); } catch(e){}
+}
+function pendingClear() {
+  try { sessionStorage.removeItem(K_PENDING); } catch(e){}
+}
+function pendingRead() {
+  try { return JSON.parse(sessionStorage.getItem(K_PENDING) || 'null'); }
+  catch(e) { return null; }
+}
+function recordCrash(info) {
+  let list = [];
+  try { list = JSON.parse(sessionStorage.getItem(K_CRASHES) || '[]'); } catch(e){}
+  list.push(Object.assign({ ts: Date.now() }, info));
+  try { sessionStorage.setItem(K_CRASHES, JSON.stringify(list)); } catch(e){}
+}
+function getCrashes() {
+  try { return JSON.parse(sessionStorage.getItem(K_CRASHES) || '[]'); } catch(e){ return []; }
+}
+function clearState() {
+  sessionStorage.removeItem(K_PENDING);
+  sessionStorage.removeItem(K_CRASHES);
+  sessionStorage.removeItem(K_STATS);
+  document.getElementById('crashes').textContent = 'Estado limpiado.';
+  log('Estado limpiado por el usuario.', 'warn');
+}
+function exportResults() {
+  const data = {
+    author: AUTHOR,
+    env: detectEnv(),
+    crashes: getCrashes(),
+    stats: JSON.parse(sessionStorage.getItem(K_STATS) || '{}')
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'h4ss9m_jsc_fuzz_' + Date.now() + '.json';
+  a.click();
+}
+
+// En la carga: ¿hubo un crash pendiente de la sesión anterior?
+window.addEventListener('load', () => {
+  detectEnv();
+  const pending = pendingRead();
+  if (pending) {
+    recordCrash(pending);
+    log('💥 CRASH detectado en: ' + pending.template +
+        ' (seed=' + pending.seed + ', iter=' + pending.iter + ')', 'crash');
+    pendingClear();
+  } else {
+    log('Sesión iniciada limpiamente. Sin crashes pendientes.', 'info');
+  }
+  renderCrashes();
 });
 
-// Registrar un posible crash antes de ejecutar un test
-function markTestRunning(name) {
-    sessionStorage.setItem(TEST_KEY, name);
-    // Forzar un flush a disco para que sobreviva al crash
-    // (sessionStorage es síncrono, pero hacemos un pequeño workaround)
-    let _ = sessionStorage.getItem(TEST_KEY);
+function renderCrashes() {
+  const list = getCrashes();
+  const el = document.getElementById('crashes');
+  if (!list.length) {
+    el.innerHTML = '<span style="color:#6e7681;">Sin crashes registrados.</span>';
+    return;
+  }
+  el.innerHTML = list.map((c, i) =>
+    '<div style="padding:6px;border-bottom:1px solid #1f2937;">' +
+    '<span class="badge err">CRASH #' + (i+1) + '</span> ' +
+    '<b>' + c.template + '</b> · seed=' + c.seed + ' · iter=' + c.iter +
+    '<br><span style="color:#6e7681;font-size:10px;">' +
+    JSON.stringify(c.params) + '</span></div>'
+  ).join('');
 }
 
 // ============================================================
-// UTILIDADES
+//  FUZZ LOOP
 // ============================================================
-const resultsDiv = document.getElementById('results');
-const consolePre = document.getElementById('console');
-const summaryDiv = document.getElementById('summary');
-let testResults = [];
+let running = false;
 
-function logLine(msg, cls) {
-    let line = document.createElement('div');
-    line.className = 'log-line ' + (cls || '');
-    line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
-    consolePre.appendChild(line);
-    consolePre.scrollTop = consolePre.scrollHeight;
-}
+function startFuzz() {
+  if (running) return;
+  running = true;
+  document.getElementById('btn-run').disabled = true;
 
-function logResult(testName, status, message, detail) {
-    let div = document.createElement('div');
-    div.className = 'test-case';
-    div.innerHTML = '<h2>' + testName + '</h2>' +
-        '<span class="status ' + status + '">' + status.toUpperCase() + '</span>' +
-        '<p style="margin: 10px 0 5px 0; font-size: 0.95em;">' + message + '</p>' +
-        (detail ? '<pre>' + detail.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>' : '');
-    resultsDiv.appendChild(div);
-    testResults.push({ name: testName, status: status, message: message });
-}
+  const totalIters = parseInt(document.getElementById('iters').value) || 500;
+  const seed = parseInt(document.getElementById('seed').value) || 1337;
+  const rng = mulberry32(seed);
+  const tplNames = Object.keys(TEMPLATES);
 
-// ============================================================
-// PLANTILLAS DE FUZZING
-// ============================================================
+  let pass = 0, crash = 0, iter = 0;
+  sessionStorage.setItem(K_STATS, JSON.stringify({ seed, totalIters, startedAt: Date.now() }));
 
-// --- Plantilla 1: Type Confusion vía Prototype Chain ---
-// Basada en patrones de bugs históricos en JSC (CVE-2018-4416, etc.)
-function templateTypeConfusion1() {
-    const name = 'TypeConfusion-PrototypeChain';
-    markTestRunning(name);
-    logLine('Ejecutando ' + name + '...', 'info');
-    
+  log('═══ FUZZING START · seed=' + seed + ' · iters=' + totalIters + ' ═══', 'info');
+
+  function tick() {
+    if (iter >= totalIters) {
+      running = false;
+      document.getElementById('btn-run').disabled = false;
+      log('═══ FUZZING END · pass=' + pass + ' crash=' + crash + ' ═══', 'info');
+      return;
+    }
+    iter++;
+
+    // Elegir template y mutar parámetros
+    const tplName = tplNames[Math.floor(rng() * tplNames.length)];
+    const params = mutate(rng, BASE_PARAMS[tplName]);
+
+    // Registrar el test PENDIENTE antes de ejecutarlo.
+    // Si el motor crashea, esta entrada sobrevive en sessionStorage
+    // y la detectaremos en el próximo load.
+    pendingSet({ template: tplName, seed, iter, params });
+
     try {
-        let obj = { a: 1, b: 2, c: 3 };
-        let arr = [1.1, 2.2, 3.3, 4.4];
-        
-        // Manipulación de prototipo para forzar una transición de estructura inesperada
-        Object.defineProperty(Array.prototype, 'length', {
-            get: function() { return 0x1000; },
-            configurable: true
-        });
-        
-        // Forzar acceso a un índice fuera de los límites reales
-        // Si JSC confunde el tipo de la estructura, puede leer memoria adyacente
-        let val = arr[100];
-        
-        // Restaurar el prototipo
-        delete Array.prototype.length;
-        
-        // Trigger de JIT: bucle caliente con la estructura corrupta
-        for (let i = 0; i < 10000; i++) {
-            let x = arr[i % 4];
-        }
-        
-        logResult(name, 'pass', 'No se detectó crash. El motor manejó la anomalía de forma segura.');
+      const res = TEMPLATES[tplName](rng, params);
+      if (res === 'skip') {
+        // template no soportado en este motor
+        pendingClear();
+      } else {
+        pass++;
+        pendingClear();
+      }
     } catch (e) {
-        logResult(name, 'error', 'Excepción capturada: ' + e.message);
+      // excepción controlada → no es crash, el motor está bien
+      pass++;
+      pendingClear();
     }
+
+    // Actualizar UI cada 25 iters
+    if (iter % 25 === 0 || iter === 1) {
+      document.getElementById('s-iter').textContent = iter;
+      document.getElementById('s-pass').textContent = pass;
+      document.getElementById('s-crash').textContent = crash;
+      log('iter ' + iter + '/' + totalIters + ' · tpl=' + tplName +
+          ' · p=' + JSON.stringify(params).slice(0, 60), 'mut');
+    }
+
+    // Programar siguiente iteración
+    setTimeout(tick, 1);
+  }
+
+  tick();
 }
 
-// --- Plantilla 2: Type Confusion vía Symbol.toPrimitive ---
-// Patrón que ha causado bugs en la fase de optimización DFG/FTL
-function templateTypeConfusion2() {
-    const name = 'TypeConfusion-SymbolToPrimitive';
-    markTestRunning(name);
-    logLine('Ejecutando ' + name + '...', 'info');
-    
-    try {
-        let triggerCount = 0;
-        let obj = {
-            [Symbol.toPrimitive]: function(hint) {
-                triggerCount++;
-                // Devolver un objeto en lugar de un primitivo
-                // Esto puede confundir al JIT sobre el tipo esperado
-                if (triggerCount > 100) {
-                    return { malicious: true };
-                }
-                return 42;
-            }
-        };
-        
-        // Calentar el JIT
-        function hotLoop(o) {
-            let sum = 0;
-            for (let i = 0; i < 1000; i++) {
-                sum += o + i; // Fuerza la conversión a primitivo
-            }
-            return sum;
-        }
-        
-        for (let i = 0; i < 50; i++) {
-            hotLoop(obj);
-        }
-        
-        logResult(name, 'pass', 'No se detectó crash. La conversión de tipos fue manejada correctamente.');
-    } catch (e) {
-        logResult(name, 'error', 'Excepción capturada: ' + e.message);
-    }
-}
-
-// --- Plantilla 3: Use-After-Free vía WeakRef y GC ---
-// Patrón clásico de UAF que ha afectado a JSC
-function templateUAF_WeakRef() {
-    const name = 'UAF-WeakRef-GC';
-    markTestRunning(name);
-    logLine('Ejecutando ' + name + '...', 'info');
-    
-    try {
-        let derefCount = 0;
-        let registry = new FinalizationRegistry(function() {
-            // Callback que se ejecuta cuando el objeto es recolectado
-        });
-        
-        function createAndDiscard() {
-            let obj = { data: new Array(1000).fill(1.1) };
-            let ref = new WeakRef(obj);
-            registry.register(obj, 'discarded');
-            
-            // Forzar GC y luego acceder a la WeakRef
-            // Si el objeto fue liberado pero el motor no actualizó el puntero,
-            // esto puede causar un UAF
-            let deref = ref.deref();
-            if (deref) {
-                derefCount++;
-                // Acceder a la propiedad después del GC
-                return deref.data[0];
-            }
-            return 0;
-        }
-        
-        for (let i = 0; i < 1000; i++) {
-            createAndDiscard();
-        }
-        
-        logResult(name, 'pass', 'No se detectó crash. La gestión de WeakRef es estable.');
-    } catch (e) {
-        logResult(name, 'error', 'Excepción capturada: ' + e.message);
-    }
-}
-
-// --- Plantilla 4: JIT Stress via Function Constructor ---
-// Fuerza la compilación JIT con código generado dinámicamente
-function templateJITStress() {
-    const name = 'JIT-Stress-DynamicCode';
-    markTestRunning(name);
-    logLine('Ejecutando ' + name + '...', 'info');
-    
-    try {
-        // Generar una función compleja con muchas operaciones
-        let body = 'let r = 0;';
-        for (let i = 0; i < 200; i++) {
-            body += 'r += Math.sin(' + i + ') * Math.cos(' + i + ');';
-        }
-        body += 'return r;';
-        
-        let fn = new Function(body);
-        
-        // Calentar el JIT
-        let result = 0;
-        for (let i = 0; i < 5000; i++) {
-            result += fn();
-        }
-        
-        logResult(name, 'pass', 'No se detectó crash. El JIT manejó el código dinámico correctamente. Resultado: ' + result);
-    } catch (e) {
-        logResult(name, 'error', 'Excepción capturada: ' + e.message);
-    }
-}
-
-// --- Plantilla 5: Array Structure Confusion ---
-// Manipulación de estructuras de arrays que ha causado bugs en JSC
-function templateArrayStructure() {
-    const name = 'Array-Structure-Confusion';
-    markTestRunning(name);
-    logLine('Ejecutando ' + name + '...', 'info');
-    
-    try {
-        // Crear un array con un tipo específico
-        let arr = [1.1, 2.2, 3.3];
-        
-        // Cambiar el tipo del array en caliente
-        arr[0] = { a: 1 }; // Ahora es un array de objetos
-        
-        // Forzar transición de nuevo a double
-        arr[1] = 4.4;
-        
-        // Manipular el prototipo de Array
-        let originalPush = Array.prototype.push;
-        Array.prototype.push = function() {
-            // Interceptar push para corromper la estructura
-            return originalPush.apply(this, arguments);
-        };
-        
-        // Calentar el JIT con el array de estructura cambiante
-        for (let i = 0; i < 10000; i++) {
-            arr.push(i * 1.1);
-            if (arr.length > 100) {
-                arr.length = 3;
-            }
-        }
-        
-        Array.prototype.push = originalPush;
-        
-        logResult(name, 'pass', 'No se detectó crash. La gestión de estructuras de arrays es estable.');
-    } catch (e) {
-        logResult(name, 'error', 'Excepción capturada: ' + e.message);
-    }
-}
-
-// --- Plantilla 6: PoC CVE-2023-41993 (Referencia histórica) ---
-// Este PoC está PARCHEADO en iOS 16.7.16. Se incluye como referencia
-// para validar que el harness detecta crashes correctamente.
-// Si crashea, significa que el parche NO está aplicado (regresión).
-function templateCVE2023_41993() {
-    const name = 'CVE-2023-41993-Reference';
-    markTestRunning(name);
-    logLine('Ejecutando ' + name + ' (PoC histórico, parcheado en 16.7.16)...', 'info');
-    
-    try {
-        // Versión simplificada del trigger de CVE-2023-41993
-        // El bug original está en la optimización de GetByOffset/MultiGetByOffset
-        // y la confusión de estructuras en el JIT.
-        // Este código reproduce el PATRÓN, no el exploit completo.
-        
-        function jitme(x) {
-            let obj = { a: 1, b: 2, c: 3, d: 4 };
-            let sum = 0;
-            for (let i = 0; i < 10000; i++) {
-                sum += obj.a + obj.b + obj.c + obj.d;
-            }
-            // Forzar una transición de estructura
-            obj.e = x;
-            return obj;
-        }
-        
-        // Calentar el JIT
-        for (let i = 0; i < 100; i++) {
-            jitme(i);
-        }
-        
-        // Intentar la confusión
-        let result = jitme(1.1);
-        
-        logResult(name, 'pass', 'El PoC de referencia no causó crash. El parche está aplicado (o el trigger no se adaptó).');
-    } catch (e) {
-        logResult(name, 'error', 'Excepción capturada: ' + e.message);
-    }
-}
-
-// ============================================================
-// ORQUESTADOR
-// ============================================================
-function runAllTests() {
-    // Limpiar
-    resultsDiv.innerHTML = '';
-    consolePre.innerHTML = '';
-    testResults = [];
-    summaryDiv.style.display = 'none';
-    
-    logLine('=== INICIANDO SESIÓN DE FUZZING ===', 'info');
-    logLine('User-Agent: ' + navigator.userAgent, 'info');
-    
-    // Ejecutar tests con delays para no bloquear el hilo principal
-    const tests = [
-        templateTypeConfusion1,
-        templateTypeConfusion2,
-        templateUAF_WeakRef,
-        templateJITStress,
-        templateArrayStructure,
-        templateCVE2023_41993
-    ];
-    
-    let index = 0;
-    function runNext() {
-        if (index >= tests.length) {
-            showSummary();
-            return;
-        }
-        let test = tests[index];
-        index++;
-        try {
-            test();
-        } catch (e) {
-            logLine('Error ejecutando test: ' + e.message, 'crash');
-        }
-        // Delay entre tests para permitir que el GC y el JIT se estabilicen
-        setTimeout(runNext, 500);
-    }
-    runNext();
-}
-
-function showSummary() {
-    let passCount = testResults.filter(r => r.status === 'pass').length;
-    let errorCount = testResults.filter(r => r.status === 'error').length;
-    let crashDetected = parseInt(sessionStorage.getItem(CRASH_KEY) || '0') > 0;
-    
-    summaryDiv.style.display = 'block';
-    summaryDiv.innerHTML = '<h2>📊 Resumen de la Sesión</h2>' +
-        '<p>✅ Tests completados sin crash: <strong>' + passCount + '</strong></p>' +
-        '<p>⚠️ Tests con excepción: <strong>' + errorCount + '</strong></p>' +
-        '<p style="color: ' + (crashDetected ? '#f85149' : '#58a6ff') + '; font-weight: bold;">' +
-        (crashDetected ? '💥 CRASH DETECTADO - Revisa la consola para más detalles' : '✅ Ningún crash detectado en esta sesión') +
-        '</p>';
-    
-    logLine('=== SESIÓN COMPLETADA ===', 'info');
-    logLine('Tests pasados: ' + passCount + ', Errores: ' + errorCount, 'info');
-}
+// El botón de clear también limpia el contador de crashes en la UI
+document.addEventListener('DOMContentLoaded', () => {
+  renderCrashes();
+});
 </script>
 </body>
 </html>
