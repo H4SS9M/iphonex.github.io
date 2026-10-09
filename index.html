@@ -3,58 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JSC Chain Fuzzer — H4SS9M</title>
+<title>LLInt Frontier Fuzzer — H4SS9M</title>
 <style>
   :root { --bg:#0a0e14; --panel:#12171f; --border:#1f2937; --text:#c9d1d9;
           --accent:#58a6ff; --ok:#3fb950; --warn:#d29922; --err:#f85149; }
   * { box-sizing: border-box; }
   body { font-family:-apple-system,BlinkMacSystemFont,"SF Mono",Menlo,monospace;
          background:var(--bg); color:var(--text); margin:0; padding:16px; font-size:13px; }
-  h1 { color:var(--accent); font-size:16px; margin:0 0 4px 0; letter-spacing:0.5px; }
+  h1 { color:var(--accent); font-size:16px; margin:0 0 4px 0; }
   .author { color:#6e7681; font-size:11px; margin-bottom:16px; }
   .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px;
            padding:12px; margin-bottom:12px; }
   .panel h2 { font-size:12px; color:#8b949e; margin:0 0 8px 0; text-transform:uppercase;
-              letter-spacing:1px; font-weight:600; }
-  .row { display:flex; justify-content:space-between; padding:3px 0; font-size:12px; }
-  .row .k { color:#6e7681; }
-  .row .v { color:var(--accent); }
+              letter-spacing:1px; }
   button { background:#1f6feb; color:#fff; border:none; padding:10px 16px;
            border-radius:6px; font-size:13px; font-weight:600; cursor:pointer;
            width:100%; margin-bottom:8px; font-family:inherit; }
-  button:active { background:#388bfd; }
   button.secondary { background:#21262d; color:var(--text); border:1px solid var(--border); }
   .stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
   .stat { background:#0a0e14; border:1px solid var(--border); border-radius:6px;
           padding:8px; text-align:center; }
   .stat .n { font-size:20px; font-weight:700; color:var(--accent); }
-  .stat .l { font-size:10px; color:#6e7681; text-transform:uppercase; letter-spacing:1px; }
+  .stat .l { font-size:10px; color:#6e7681; text-transform:uppercase; }
   #log { background:#0a0e14; border:1px solid var(--border); border-radius:6px;
-         padding:8px; height:200px; overflow-y:auto; font-size:11px;
-         font-family:"SF Mono",Menlo,monospace; margin-top:8px; }
+         padding:8px; height:220px; overflow-y:auto; font-size:11px; margin-top:8px; }
   .l-info { color:#6e7681; }
   .l-pass { color:var(--ok); }
-  .l-warn { color:var(--warn); }
   .l-crash { color:var(--err); font-weight:700; }
   .l-mut { color:#a371f7; }
-  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; }
-  .badge.ok { background:#3fb95022; color:var(--ok); border:1px solid #3fb95066; }
-  .badge.warn { background:#d2992222; color:var(--warn); border:1px solid #d2992266; }
-  .badge.err { background:#f8514922; color:var(--err); border:1px solid #f8514966; }
+  .l-warn { color:var(--warn); }
 </style>
 </head>
 <body>
 <div style="max-width:820px;margin:0 auto;">
-  <h1>⚡ JSC Chain Fuzzer</h1>
-  <div class="author">Mutation-based harness · iOS WebKit · by <b>H4SS9M</b></div>
+  <h1>⚡ LLInt Frontier Fuzzer</h1>
+  <div class="author">Directed stress on JavaScriptCore interpreter boundaries · by <b>H4SS9M</b></div>
 
-  <div class="panel" id="env">
+  <div class="panel">
     <h2>Environment</h2>
-    <div class="row"><span class="k">iOS</span><span class="v" id="v-ios">…</span></div>
-    <div class="row"><span class="k">WebKit</span><span class="v" id="v-wk">…</span></div>
-    <div class="row"><span class="k">Build</span><span class="v" id="v-build">…</span></div>
-    <div class="row"><span class="k">Engine</span><span class="v" id="v-engine">…</span></div>
-    <div class="row"><span class="k">Features</span><span class="v" id="v-feat">…</span></div>
+    <div style="font-size:11px;color:#6e7681;" id="env">…</div>
   </div>
 
   <div class="panel">
@@ -66,7 +53,7 @@
     </div>
     <div style="margin-top:10px;">
       <label style="font-size:11px;color:#6e7681;">Iteraciones: </label>
-      <input id="iters" type="number" value="500" min="10" max="10000"
+      <input id="iters" type="number" value="300" min="10" max="5000"
              style="background:#0a0e14;color:var(--text);border:1px solid var(--border);
              border-radius:4px;padding:4px 8px;width:80px;font-family:inherit;">
       <label style="font-size:11px;color:#6e7681;margin-left:10px;">Seed: </label>
@@ -78,7 +65,7 @@
 
   <div class="panel">
     <h2>Control</h2>
-    <button id="btn-run" onclick="startFuzz()">▶ Start Fuzzing</button>
+    <button id="btn-run" onclick="startFuzz()">▶ Start Directed Fuzzing</button>
     <button class="secondary" onclick="clearState()">⟲ Clear State</button>
     <button class="secondary" onclick="exportResults()">⬇ Export Results (JSON)</button>
   </div>
@@ -96,48 +83,22 @@
 
 <script>
 // ============================================================
-//  JSC Chain Fuzzer — by H4SS9M
+//  LLInt Frontier Fuzzer — by H4SS9M
 // ============================================================
 const AUTHOR = "H4SS9M";
-const K_PENDING = "h4ss9m_pending";   // test en curso
-const K_CRASHES = "h4ss9m_crashes";   // lista de crashes detectados
-const K_STATS   = "h4ss9m_stats";     // estadísticas de sesión
+const K_PENDING = "h4ss9m_llint_pending";
+const K_CRASHES = "h4ss9m_llint_crashes";
 
-// ---------- Environment detection ----------
 function detectEnv() {
   const ua = navigator.userAgent;
   const iosMatch = ua.match(/iPhone OS (\d+_\d+(?:_\d+)?)/);
-  const wkMatch  = ua.match(/AppleWebKit\/([\d.]+)/);
-  const verMatch = ua.match(/Version\/([\d.]+)/);
   const buildMatch = ua.match(/Mobile\/(\w+)/);
-
-  const ios   = iosMatch  ? iosMatch[1].replace(/_/g,'.') : 'unknown';
-  const wk    = wkMatch   ? wkMatch[1] : 'unknown';
-  const safari= verMatch  ? verMatch[1] : 'unknown';
-  const build = buildMatch? buildMatch[1] : 'unknown';
-
-  // Detect JSC features (indirect engine fingerprinting)
-  const feats = [];
-  if (typeof BigInt !== 'undefined') feats.push('BigInt');
-  if (typeof WebAssembly !== 'undefined') feats.push('WASM');
-  if (typeof WeakRef !== 'undefined') feats.push('WeakRef');
-  if (typeof FinalizationRegistry !== 'undefined') feats.push('FinalReg');
-  if (typeof SharedArrayBuffer !== 'undefined') feats.push('SAB');
-  if (typeof Atomics !== 'undefined') feats.push('Atomics');
-  if (typeof Intl !== 'undefined') feats.push('Intl');
-  if (typeof structuredClone !== 'undefined') feats.push('clone');
-  if (typeof Array.prototype.at !== 'undefined') feats.push('Array.at');
-
-  document.getElementById('v-ios').textContent    = "iOS " + ios;
-  document.getElementById('v-wk').textContent     = wk;
-  document.getElementById('v-build').textContent  = build + " / Safari " + safari;
-  document.getElementById('v-engine').textContent = "JavaScriptCore";
-  document.getElementById('v-feat').textContent   = feats.join(' · ') || 'none';
-
-  return { ios, wk, safari, build, feats, ua };
+  const ios = iosMatch ? iosMatch[1].replace(/_/g,'.') : 'unknown';
+  const build = buildMatch ? buildMatch[1] : 'unknown';
+  document.getElementById('env').textContent = `iOS ${ios} · Build ${build} · JavaScriptCore (LLInt active)`;
+  return { ios, build, ua };
 }
 
-// ---------- Logging ----------
 function log(msg, cls) {
   const el = document.getElementById('log');
   const line = document.createElement('div');
@@ -147,8 +108,6 @@ function log(msg, cls) {
   el.scrollTop = el.scrollHeight;
 }
 
-// ---------- Deterministic PRNG (mulberry32) ----------
-// Permite reproducir una sesión a partir de la seed.
 function mulberry32(a) {
   return function() {
     a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -159,241 +118,180 @@ function mulberry32(a) {
 }
 
 // ============================================================
-//  POC TEMPLATES (patrones reales de bugs históricos en JSC)
+//  FRONTIER TEST TEMPLATES
 // ============================================================
-// Cada template recibe un objeto `rng` (PRNG) y `p` (parámetros mutables)
-// y devuelve true si todo OK, o lanza si hay excepción.
+// Cada template ataca una frontera lógica específica de LLInt.
 
 const TEMPLATES = {
 
-  // T1: Array species + prototype confusion (patrón CVE-2018-4416-ish)
-  'array-species': (rng, p) => {
-    const N = p.size;
-    const M = p.iter;
-    const arr = new Array(N).fill(p.fill);
-    Object.defineProperty(arr.constructor, Symbol.species, {
-      get() { return function(len) { return { length: len }; }; },
-      configurable: true
-    });
-    for (let i = 0; i < M; i++) {
-      const sliced = arr.slice(0, p.cut);
-      if (sliced.length !== undefined && sliced[0] !== undefined) {
-        // intento de leer más allá de la estructura "fake"
-        const probe = sliced[p.cut + 1];
-      }
-    }
-    delete arr.constructor[Symbol.species];
-    return true;
-  },
+  // F1: Stack Limit Stress — aridad variable + recursión profunda
+  'stack-limit': (rng, p) => {
+    const arity = p.arity;
+    const depth = p.depth;
+    // Generar función con aridad variable usando eval
+    let params = [];
+    for (let i = 0; i < arity; i++) params.push('a' + i);
+    let fn;
+    try {
+      fn = new Function(...params, `
+        if (${depth} <= 0) return 0;
+        return ${depth} + (function(){ return arguments.callee; })();
+      `);
+    } catch(e) { return 'skip'; }
 
-  // T2: TypedArray + ArrayBuffer detachment race (patrón CVE-2023-32445-ish)
-  'typedarray-detach': (rng, p) => {
-    const buf = new ArrayBuffer(p.size);
-    const view = new DataView(buf);
-    const f64 = new Float64Array(buf);
-    const u32 = new Uint32Array(buf);
-    for (let i = 0; i < p.iter; i++) {
-      // escribir un double que, reinterpretado como enteros, dé valores altos
-      f64[0] = p.value;
-      const lo = u32[0], hi = u32[1];
-      // forzar una escritura que cruce el límite del buffer
-      const idx = (hi & 0x7fffffff) % (p.size / 4);
-      u32[idx] = lo ^ (p.mask >>> 0);
+    // Recursión controlada hasta el límite
+    let result = 0;
+    function recurse(n) {
+      if (n <= 0) return 0;
+      // Intercalar llamada nativa en profundidad
+      if (n % 50 === 0) Math.random();
+      return recurse(n - 1) + 1;
+    }
+    try {
+      result = recurse(depth);
+    } catch(e) {
+      // RangeError esperado → no es crash
+      return true;
     }
     return true;
   },
 
-  // T3: Proxy get trap recursion (patrón de confusión de estructuras)
-  'proxy-recursion': (rng, p) => {
-    let depth = 0;
-    const target = { x: p.value };
-    const handler = {
-      get(t, k, r) {
-        if (k === 'x' && depth < p.depth) {
-          depth++;
-          // reentrar en la trampa mientras el JIT asume un tipo
-          return r.x;
+  // F2: Exception Unwinding — excepciones en bordes nativos
+  'native-exception': (rng, p) => {
+    const iterations = p.iterations;
+    for (let i = 0; i < iterations; i++) {
+      try {
+        // Crear un Proxy que lanza excepción al acceder a una propiedad
+        const handler = {
+          get(t, k, r) {
+            if (k === 'trigger') {
+              // Lanzar excepción dentro de una operación nativa
+              throw new Error('native-boundary');
+            }
+            return t[k];
+          }
+        };
+        const proxy = new Proxy({}, handler);
+        // Forzar acceso a través de una API nativa (JSON.stringify invoca getters)
+        try {
+          JSON.stringify(proxy);
+        } catch(e) {
+          // Excepción esperada
         }
-        return t[k];
-      }
-    };
-    const proxy = new Proxy(target, handler);
-    for (let i = 0; i < p.iter; i++) {
-      depth = 0;
-      const v = proxy.x;
-    }
-    return true;
-  },
-
-  // T4: RegExp lastIndex + sticky flag (patrón de UAF histórico)
-  'regexp-lastindex': (rng, p) => {
-    const re = new RegExp('(a+)+$', 'y');
-    const str = 'a'.repeat(p.size);
-    for (let i = 0; i < p.iter; i++) {
-      re.lastIndex = i % p.size;
-      const m = re.exec(str);
-      if (m && m.index > p.size) {
-        // forzar acceso a un índice fuera de rango si el motor confunde el match
-        const c = str[m.index + p.depth];
+      } catch(e) {
+        // Excepción capturada
       }
     }
     return true;
   },
 
-  // T5: Structured clone + transfer (type confusion en la serialización)
-  'structured-clone': (rng, p) => {
-    if (typeof structuredClone !== 'function') return 'skip';
-    const buf = new ArrayBuffer(p.size);
-    const view = new Uint8Array(buf);
-    for (let i = 0; i < p.size; i++) view[i] = (i * p.mask) & 0xff;
-    for (let i = 0; i < p.iter; i++) {
-      const clone = structuredClone(buf, { transfer: [buf] });
-      // buf transferido → cualquier acceso posterior debe lanzar
-      try { view[0] = 0xff; } catch (e) { /* esperado */ }
-      if (clone.byteLength !== p.size) return 'mismatch';
+  // F3: IC Invalidation — cambios de prototipo en caliente
+  'ic-invalidation': (rng, p) => {
+    const iterations = p.iterations;
+    const protoCount = p.protos;
+    let protos = [];
+    for (let i = 0; i < protoCount; i++) {
+      protos.push({ val: i });
     }
-    return true;
-  },
-
-  // T6: JIT deopt con arguments + function.length (patrón de bug en DFG)
-  'jit-deopt-args': (rng, p) => {
-    function hot(a, b, c) {
+    // Objeto con cadena de prototipos cambiante
+    let obj = Object.create(protos[0]);
+    // Calentar el acceso a propiedad (IC)
+    function hotAccess(o) {
       let sum = 0;
-      for (let i = 0; i < p.iter; i++) {
-        sum += (a + b + c) * (arguments.length + i);
+      for (let j = 0; j < 100; j++) {
+        sum += o.val || 0;
       }
       return sum;
     }
-    // calentar con distintos arity para forzar deopts
-    for (let i = 0; i < 100; i++) hot(i, i, i);
-    for (let i = 0; i < 100; i++) hot(i, i);
-    for (let i = 0; i < 100; i++) hot(i, i, i, i, i);
-    // llamada final con argumentos "raros"
-    const r = hot(p.value, { x: p.mask }, [p.size]);
+    for (let i = 0; i < iterations; i++) {
+      // Cambiar prototipo en caliente
+      Object.setPrototypeOf(obj, protos[i % protoCount]);
+      hotAccess(obj);
+    }
     return true;
   },
 
-  // T7: Map/Set + Symbol.iterator manipulation
-  'map-set-iter': (rng, p) => {
-    const m = new Map();
-    for (let i = 0; i < p.size; i++) m.set(i, i * p.mask);
-    // sobrescribir el iterador del prototipo en caliente
-    const orig = Map.prototype[Symbol.iterator];
-    Map.prototype[Symbol.iterator] = function() {
-      const it = orig.call(this);
-      return {
-        next() { const r = it.next(); return r; },
-        [Symbol.iterator]() { return this; }
-      };
-    };
-    let count = 0;
-    for (const [k, v] of m) { count++; if (count > p.size * 2) break; }
-    Map.prototype[Symbol.iterator] = orig;
-    return true;
-  },
-
-  // T8: getter/setter con delete en caliente (structure transition bug)
-  'structure-transition': (rng, p) => {
-    const o = {};
-    for (let i = 0; i < p.size; i++) {
-      Object.defineProperty(o, 'p' + i, {
-        get() { return i; },
-        set(v) { /* noop */ },
-        configurable: true
-      });
+  // F4: JIT Deoptimization — forzar transiciones de tipo en bucles calientes
+  'deopt-stress': (rng, p) => {
+    const iterations = p.iterations;
+    // Función que el JIT optimizará con suposición de tipo numérico
+    function hotLoop(x) {
+      let sum = 0;
+      for (let i = 0; i < 1000; i++) {
+        sum += x * i;
+      }
+      return sum;
     }
-    // borrar propiedades en orden inverso → forzar transición de dictionary mode
-    for (let i = p.size - 1; i >= 0; i--) {
-      delete o['p' + i];
-    }
-    // reañadir propiedades en orden aleatorio
-    for (let i = 0; i < p.size; i++) {
-      o['p' + (i % p.size)] = i;
+    // Calentar con números
+    for (let i = 0; i < 500; i++) hotLoop(i);
+    // Forzar deoptimización con tipos inesperados
+    const weirdValues = [Symbol('x'), {a:1}, [1,2], BigInt(42), null, undefined];
+    for (let i = 0; i < iterations; i++) {
+      try {
+        hotLoop(weirdValues[i % weirdValues.length]);
+      } catch(e) {
+        // TypeError esperado
+      }
     }
     return true;
   }
 };
 
-// ---------- Mutation engine ----------
+const BASE_PARAMS = {
+  'stack-limit':      { arity: 4, depth: 5000 },
+  'native-exception': { iterations: 500 },
+  'ic-invalidation':  { iterations: 2000, protos: 8 },
+  'deopt-stress':     { iterations: 1000 }
+};
+
 function mutate(rng, base) {
   const p = Object.assign({}, base);
-  // Mutar cada parámetro numérico con +/- hasta 50%
   for (const k of Object.keys(p)) {
     if (typeof p[k] === 'number') {
-      const delta = Math.floor((rng() - 0.5) * p[k] * 1.0);
-      p[k] = Math.max(1, Math.min(100000, p[k] + delta));
-    } else if (typeof p[k] === 'boolean') {
-      if (rng() < 0.1) p[k] = !p[k];
+      const delta = Math.floor((rng() - 0.5) * p[k] * 0.8);
+      p[k] = Math.max(1, Math.min(50000, p[k] + delta));
     }
   }
   return p;
 }
 
-const BASE_PARAMS = {
-  'array-species':       { size: 64,   iter: 200, cut: 16,  fill: 1.1 },
-  'typedarray-detach':   { size: 256,  iter: 500, value: 1.7976931348623157e308, mask: 0xdeadbeef },
-  'proxy-recursion':     { depth: 32,  iter: 300, value: 42 },
-  'regexp-lastindex':    { size: 128,  iter: 300, depth: 8 },
-  'structured-clone':    { size: 128,  iter: 100, mask: 0x5a },
-  'jit-deopt-args':      { iter: 500,  value: 1.5, mask: 0x1337 },
-  'map-set-iter':        { size: 64,   mask: 3 },
-  'structure-transition':{ size: 32 }
-};
-
 // ============================================================
 //  CRASH DETECTION
 // ============================================================
-function pendingSet(info) {
-  try { sessionStorage.setItem(K_PENDING, JSON.stringify(info)); } catch(e){}
-}
-function pendingClear() {
-  try { sessionStorage.removeItem(K_PENDING); } catch(e){}
-}
-function pendingRead() {
-  try { return JSON.parse(sessionStorage.getItem(K_PENDING) || 'null'); }
-  catch(e) { return null; }
-}
+function pendingSet(info) { try { sessionStorage.setItem(K_PENDING, JSON.stringify(info)); } catch(e){} }
+function pendingClear() { try { sessionStorage.removeItem(K_PENDING); } catch(e){} }
+function pendingRead() { try { return JSON.parse(sessionStorage.getItem(K_PENDING) || 'null'); } catch(e) { return null; } }
 function recordCrash(info) {
   let list = [];
   try { list = JSON.parse(sessionStorage.getItem(K_CRASHES) || '[]'); } catch(e){}
   list.push(Object.assign({ ts: Date.now() }, info));
   try { sessionStorage.setItem(K_CRASHES, JSON.stringify(list)); } catch(e){}
 }
-function getCrashes() {
-  try { return JSON.parse(sessionStorage.getItem(K_CRASHES) || '[]'); } catch(e){ return []; }
-}
+function getCrashes() { try { return JSON.parse(sessionStorage.getItem(K_CRASHES) || '[]'); } catch(e) { return []; } }
 function clearState() {
   sessionStorage.removeItem(K_PENDING);
   sessionStorage.removeItem(K_CRASHES);
-  sessionStorage.removeItem(K_STATS);
   document.getElementById('crashes').textContent = 'Estado limpiado.';
-  log('Estado limpiado por el usuario.', 'warn');
+  log('Estado limpiado.', 'warn');
 }
 function exportResults() {
-  const data = {
-    author: AUTHOR,
-    env: detectEnv(),
-    crashes: getCrashes(),
-    stats: JSON.parse(sessionStorage.getItem(K_STATS) || '{}')
-  };
+  const data = { author: AUTHOR, env: detectEnv(), crashes: getCrashes() };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'h4ss9m_jsc_fuzz_' + Date.now() + '.json';
+  a.download = 'h4ss9m_llint_' + Date.now() + '.json';
   a.click();
 }
 
-// En la carga: ¿hubo un crash pendiente de la sesión anterior?
 window.addEventListener('load', () => {
   detectEnv();
   const pending = pendingRead();
   if (pending) {
     recordCrash(pending);
-    log('💥 CRASH detectado en: ' + pending.template +
-        ' (seed=' + pending.seed + ', iter=' + pending.iter + ')', 'crash');
+    log('💥 CRASH detectado en: ' + pending.template + ' (seed=' + pending.seed + ')', 'crash');
     pendingClear();
   } else {
-    log('Sesión iniciada limpiamente. Sin crashes pendientes.', 'info');
+    log('Sesión iniciada limpiamente.', 'info');
   }
   renderCrashes();
 });
@@ -401,16 +299,12 @@ window.addEventListener('load', () => {
 function renderCrashes() {
   const list = getCrashes();
   const el = document.getElementById('crashes');
-  if (!list.length) {
-    el.innerHTML = '<span style="color:#6e7681;">Sin crashes registrados.</span>';
-    return;
-  }
+  if (!list.length) { el.innerHTML = '<span style="color:#6e7681;">Sin crashes registrados.</span>'; return; }
   el.innerHTML = list.map((c, i) =>
     '<div style="padding:6px;border-bottom:1px solid #1f2937;">' +
-    '<span class="badge err">CRASH #' + (i+1) + '</span> ' +
-    '<b>' + c.template + '</b> · seed=' + c.seed + ' · iter=' + c.iter +
-    '<br><span style="color:#6e7681;font-size:10px;">' +
-    JSON.stringify(c.params) + '</span></div>'
+    '<span style="color:#f85149;font-weight:700;">CRASH #' + (i+1) + '</span> ' +
+    '<b>' + c.template + '</b> · seed=' + c.seed + '<br>' +
+    '<span style="color:#6e7681;font-size:10px;">' + JSON.stringify(c.params) + '</span></div>'
   ).join('');
 }
 
@@ -424,69 +318,48 @@ function startFuzz() {
   running = true;
   document.getElementById('btn-run').disabled = true;
 
-  const totalIters = parseInt(document.getElementById('iters').value) || 500;
+  const totalIters = parseInt(document.getElementById('iters').value) || 300;
   const seed = parseInt(document.getElementById('seed').value) || 1337;
   const rng = mulberry32(seed);
   const tplNames = Object.keys(TEMPLATES);
 
-  let pass = 0, crash = 0, iter = 0;
-  sessionStorage.setItem(K_STATS, JSON.stringify({ seed, totalIters, startedAt: Date.now() }));
-
-  log('═══ FUZZING START · seed=' + seed + ' · iters=' + totalIters + ' ═══', 'info');
+  let pass = 0, iter = 0;
+  log('═══ DIRECTED FUZZING START · seed=' + seed + ' · iters=' + totalIters + ' ═══', 'info');
 
   function tick() {
     if (iter >= totalIters) {
       running = false;
       document.getElementById('btn-run').disabled = false;
-      log('═══ FUZZING END · pass=' + pass + ' crash=' + crash + ' ═══', 'info');
+      log('═══ FUZZING END · pass=' + pass + ' ═══', 'info');
       return;
     }
     iter++;
 
-    // Elegir template y mutar parámetros
     const tplName = tplNames[Math.floor(rng() * tplNames.length)];
     const params = mutate(rng, BASE_PARAMS[tplName]);
 
-    // Registrar el test PENDIENTE antes de ejecutarlo.
-    // Si el motor crashea, esta entrada sobrevive en sessionStorage
-    // y la detectaremos en el próximo load.
     pendingSet({ template: tplName, seed, iter, params });
 
     try {
       const res = TEMPLATES[tplName](rng, params);
-      if (res === 'skip') {
-        // template no soportado en este motor
-        pendingClear();
-      } else {
-        pass++;
-        pendingClear();
-      }
+      if (res === 'skip') { pendingClear(); }
+      else { pass++; pendingClear(); }
     } catch (e) {
-      // excepción controlada → no es crash, el motor está bien
       pass++;
       pendingClear();
     }
 
-    // Actualizar UI cada 25 iters
-    if (iter % 25 === 0 || iter === 1) {
+    if (iter % 20 === 0 || iter === 1) {
       document.getElementById('s-iter').textContent = iter;
       document.getElementById('s-pass').textContent = pass;
-      document.getElementById('s-crash').textContent = crash;
-      log('iter ' + iter + '/' + totalIters + ' · tpl=' + tplName +
-          ' · p=' + JSON.stringify(params).slice(0, 60), 'mut');
+      document.getElementById('s-crash').textContent = 0;
+      log('iter ' + iter + '/' + totalIters + ' · tpl=' + tplName + ' · p=' + JSON.stringify(params).slice(0, 50), 'mut');
     }
 
-    // Programar siguiente iteración
     setTimeout(tick, 1);
   }
-
   tick();
 }
-
-// El botón de clear también limpia el contador de crashes en la UI
-document.addEventListener('DOMContentLoaded', () => {
-  renderCrashes();
-});
 </script>
 </body>
 </html>
